@@ -1,0 +1,945 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hành Lang Cách Ly - Medical Escape 3D</title>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: 'Courier New', Courier, monospace; background: #000; color: #00ffcc; text-shadow: 0 0 5px #00ffcc;}
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; }
+        
+        #dialogues { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 5; }
+        .speech-bubble {
+            position: absolute;
+            background: rgba(0, 30, 40, 0.85); color: #0df;
+            padding: 8px 14px; border-radius: 4px;
+            font-size: 14px; font-weight: bold;
+            pointer-events: none; transform: translate(-50%, -120%);
+            box-shadow: 0 0 10px rgba(0, 255, 255, 0.4);
+            border: 1px solid #0df;
+            opacity: 0; transition: opacity 0.2s;
+            white-space: nowrap; backdrop-filter: blur(2px);
+            text-shadow: none;
+        }
+        
+        #ui-layer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; display: flex; flex-direction: column; justify-content: space-between;
+            z-index: 10;
+        }
+        
+        .header-container {
+            position: absolute; top: 20px; right: 20px; text-align: right; pointer-events: auto; z-index: 20;
+        }
+        .header-toggle {
+            padding: 8px 15px; background: rgba(0,50,60,0.9); border: 1px solid #0df; color: #0df;
+            cursor: pointer; display: inline-block; font-weight: bold; font-family: 'Courier New', Courier, monospace;
+        }
+        .header-toggle:hover { background: #0df; color: #000; }
+        .header-content {
+            display: none; background: rgba(0,20,30,0.95); border: 1px solid #0df; padding: 15px; margin-top: 5px; 
+            text-align: right; box-shadow: 0 0 15px rgba(0,255,255,0.2);
+        }
+        .header-content h1 { margin: 0 0 5px 0; font-size: 18px; font-weight: 800; letter-spacing: 2px; color: #fff;}
+        .header-content p { margin: 0 0 10px 0; font-size: 12px; color: #aaa; text-shadow: none;}
+        
+        .hud {
+            position: absolute; top: 20px; left: 20px;
+            background: rgba(0, 20, 30, 0.8); padding: 8px 15px; border: 1px solid #0df;
+            font-size: 14px; font-weight: bold; border-left: 3px solid #0df; box-shadow: 0 0 10px rgba(0,255,255,0.2);
+        }
+        
+        .controls { position: absolute; bottom: 30px; right: 30px; pointer-events: auto; }
+        
+        button {
+            padding: 12px 20px; font-size: 14px; cursor: pointer; border: 2px solid #00ffcc;
+            background: rgba(0, 50, 60, 0.8); color: #00ffcc; font-weight: bold;
+            font-family: 'Courier New', Courier, monospace; letter-spacing: 1px;
+            text-transform: uppercase; transition: 0.2s; box-shadow: 0 0 10px rgba(0,255,255,0.3);
+        }
+        button:hover { background: #00ffcc; color: #000; box-shadow: 0 0 20px rgba(0,255,255,0.8); transform: translateY(-2px);}
+        button:disabled { border-color: #555; color: #555; background: #111; cursor: not-allowed; box-shadow: none; transform: none;}
+        
+        #overlay-red {
+            position: absolute; width:100%; height:100%; background: red;
+            opacity: 0; pointer-events: none; z-index: 15; mix-blend-mode: multiply;
+        }
+
+        #message {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: rgba(10, 0, 0, 0.95); color: #ff3333; padding: 40px 60px;
+            text-align: center; display: none; pointer-events: auto;
+            border: 2px solid #ff0000; box-shadow: 0 0 40px rgba(255,0,0,0.6);
+            backdrop-filter: blur(5px); z-index: 20; min-width: 500px;
+        }
+        #message h1 { margin-top: 0; font-size: 32px; letter-spacing: 2px; text-shadow: 0 0 10px red; }
+        #message p { font-size: 18px; line-height: 1.5; margin-bottom: 30px; text-shadow: none;}
+        #message.win { border-color: #0df; color: #0df; background: rgba(0,20,30,0.95); box-shadow: 0 0 40px rgba(0,255,255,0.5);}
+        #message.win h1 { color: #fff; text-shadow: 0 0 10px #0df;}
+        #message.win button { border-color: #0df; color: #0df; }
+        #message button { border-color: red; color: red; }
+        #message button:hover { background: red; color: white;}
+        #message.win button:hover { background: #0df; color: black;}
+
+        .legend {
+            background: rgba(0, 0, 0, 0.5); padding: 10px; border: 1px solid #555; color: #ccc; font-size: 12px;
+            text-align: left;
+        }
+        .legend-item { display: flex; align-items: center; margin-bottom: 5px; }
+        .legend-item:last-child { margin-bottom: 0; }
+        .color-box { width: 12px; height: 12px; margin-right: 8px; }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+</head>
+<body>
+    <div id="introModal" style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:9999; display:flex; justify-content:center; align-items:center; text-align:center;">
+        <div style="background:rgba(0,30,40,0.95); border:2px solid #0df; padding:40px; max-width:600px; box-shadow:0 0 40px rgba(0,255,255,0.4);">
+            <h1 style="color:#0df; margin-top:0; font-size: 28px;">HÀNH LANG CÁCH LY SEC-4</h1>
+            <p style="font-size:16px; line-height:1.6; color:#ccc; text-align: left; background: rgba(0,0,0,0.5); padding: 15px; border-left: 4px solid #0df;">
+               <b>NHIỆM VỤ:</b> Đưa 3 Bác sĩ và 3 Bệnh nhân qua vùng an toàn.<br><br>
+               <b>QUY TẮC SINH TỒN:</b><br>
+               1. Xe điện cần có người lái và chở tối đa 2 người.<br>
+               2. Việc cách ly yêu cầu Tỷ lệ an toàn Y tế: Bất cứ khi nào số lượng Bệnh nhân trong 1 khu vực T LỚN HƠN số Bác sĩ, bệnh nhân sẽ trở nên hoảng loạn, khu đó bị phong tỏa.<br><br>
+               <i>* Hint: Tương tác với môi trường để tìm hiểu thêm.</i>
+            </p>
+            <div style="margin-top: 30px; display:flex; justify-content:center; gap:20px;">
+               <button onclick="document.getElementById('introModal').style.display='none'; if(typeof systemSpeak !== 'undefined') systemSpeak('Bắt đầu vận hành quy trình cách ly!');" style="background:#0df; color:#000;">BẮT ĐẦU NGAY</button>
+               <button onclick="document.getElementById('introModal').style.display='none';" style="background:transparent; color:#888; border-color:#555;">[X] BỎ QUA</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="overlay-red"></div>
+    <div id="dialogues"></div>
+    <canvas id="gameCanvas"></canvas>
+    
+    <div id="ui-layer">
+        <!-- Nút Lại Lại (Khởi động lại) dạt Góc Dưới Trái -->
+        <div style="position: absolute; bottom: 30px; left: 30px; pointer-events: auto;">
+            <button onclick="restartGame()" style="background: rgba(80,0,0,0.8); border-color:#f00; color:#f00; padding: 12px 15px; font-size: 13px;">[ REBOOT THỬ LẠI ]</button>
+        </div>
+
+        <!-- Bảng Thông số SỐ CHUYẾN XE (Góc Trên Trái) -->
+        <div class="hud" id="moves">SỐ CHUYẾN XE: 0</div>
+        
+        <!-- Header Toggle Menu (Góc Trên Phải) -->
+        <div class="header-container">
+            <div class="header-toggle" onclick="toggleHeader()">THÔNG TIN NHIỆM VỤ [ + ]</div>
+            <div class="header-content" id="mainHeader">
+                <h1>HÀNH LANG CÁCH LY SEC-4</h1>
+                <p>> CLICK VÀO NHÂN VẬT ĐỂ LÊN/XUỐNG XE ĐIỆN</p>
+                <div class="legend">
+                    <div class="legend-item"><div class="color-box" style="background:#fff;"></div>Nhân sự Y tế (Bác sĩ)</div>
+                    <div class="legend-item"><div class="color-box" style="background:#5DADE2;"></div>Người cách ly (Bệnh nhân)</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button id="goBtn" onclick="moveCart()">KÍCH HOẠT HỆ THỐNG RAY ĐIỆN</button>
+        </div>
+    </div>
+
+    <div id="message">
+        <h1 id="msgTitle">KHẨN CẤP</h1>
+        <p id="msgDesc">Ghi đè báo cáo lỗi.</p>
+        <button onclick="restartGame()">REBOOT HỆ THỐNG</button>
+    </div>
+
+    <script>
+        // --- CẤU HÌNH BIẾN ---
+        const P_LEFT_X = -1.2;
+        const P_RIGHT_X = 1.2;
+        
+        // Slot cho Vùng Đỏ (Bên Trái)
+        const leftBankSlots = [
+            {x: -4.5, y: 0.1, z: -2}, {x: -4.5, y: 0.1, z: 0}, {x: -4.5, y: 0.1, z: 2},
+            {x: -6, y: 0.1, z: -1.5}, {x: -6, y: 0.1, z: 1.5}, {x: -6, y: 0.1, z: 0} 
+        ];
+        // Slot cho Vùng Xanh (Bên Phải)
+        const rightBankSlots = [
+            {x: 4.5, y: 0.1, z: -2}, {x: 4.5, y: 0.1, z: 0}, {x: 4.5, y: 0.1, z: 2},
+            {x: 6, y: 0.1, z: -1.5}, {x: 6, y: 0.1, z: 1.5}, {x: 6, y: 0.1, z: 0}
+        ];
+        // Slot trên xe điện Hover-cart
+        const cartSlotsOffsets = [
+            {x: -0.4, y: 0.5, z: 0},
+            {x:  0.4, y: 0.5, z: 0}
+        ];
+
+        let state = {
+            leftBank: [], rightBank: [], cart: [], cartSide: 'left', // 'left' | 'right'
+            isAnimating: false, isGameOver: false, moves: 0
+        };
+
+        function toggleHeader() {
+            let hdr = document.getElementById('mainHeader');
+            hdr.style.display = (hdr.style.display === 'block') ? 'none' : 'block';
+        }
+
+        let scene, camera, renderer, controls, cartGroup;
+        let characters = []; 
+        let emergencyLight1, emergencyLight2; // Báo động đỏ
+        let interactableProps = []; 
+        let ceilingFan; let isFanOn = true;
+        let ambientLightToggle;
+        let isAcOn = false; let acVentsMat;
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+        let activeBubbles = {};     // Bóng thoại đang hiển thị
+        let hoveredChar = null;     // Nhân vật / prop đang hover
+
+        init();
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x112233); // Sáng hơn
+            scene.fog = new THREE.FogExp2(0x112233, 0.03); // Giảm sương mù để nhìn rõ map
+
+            camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 100);
+            camera.position.set(0, 10, 16); 
+            // Góc Isometric nghiêng 45 độ
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, canvas: document.getElementById('gameCanvas') });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+
+            // Lighting rực rỡ hơn để toàn map sáng lên đúng ý bạn
+            const ambient = new THREE.AmbientLight(0x6688aa, 2.5); 
+            scene.add(ambient);
+            
+            // Đèn rọi chéo Vùng Xanh (Hy vọng)
+            const spotLightBlue = new THREE.SpotLight(0x00ffff, 1.5, 40, 0.6, 0.5, 1);
+            spotLightBlue.position.set(10, 15, 5);
+            spotLightBlue.target.position.set(6, 0, 0);
+            spotLightBlue.castShadow = true;
+            scene.add(spotLightBlue);
+            scene.add(spotLightBlue.target);
+
+            // Đèn rọi chéo Vùng Đỏ (Nguy hiểm)
+            const spotLightRed = new THREE.SpotLight(0xff5500, 1, 40, 0.6, 0.5, 1);
+            spotLightRed.position.set(-10, 15, -5);
+            spotLightRed.target.position.set(-6, 0, 0);
+            spotLightRed.castShadow = true;
+            scene.add(spotLightRed);
+            scene.add(spotLightRed.target);
+
+            // Đèn Emergency ẩn
+            emergencyLight1 = new THREE.PointLight(0xff0000, 0, 20);
+            emergencyLight1.position.set(-5, 4, 0);
+            scene.add(emergencyLight1);
+            emergencyLight2 = new THREE.PointLight(0xff0000, 0, 20);
+            emergencyLight2.position.set(5, 4, 0);
+            scene.add(emergencyLight2);
+
+            buildMedicalMap();
+
+            // Hover Cart (Xe điện) Sáng hơn & Khung lồng sắt
+            cartGroup = new THREE.Group();
+            const cartBase = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.3, 1.4), new THREE.MeshStandardMaterial({color: 0xcccccc, metalness: 0.9, roughness: 0.1}));
+            
+            // Khung lồng bảo vệ xe (Tương tác sáng)
+            const cageMat = new THREE.LineBasicMaterial({color: 0x00ffff, linewidth: 2});
+            const cageGeo = new THREE.EdgesGeometry(new THREE.BoxGeometry(2.1, 1.4, 1.3));
+            const cartCage = new THREE.LineSegments(cageGeo, cageMat);
+            cartCage.position.y = 1.0;
+            
+            // Kính chắn trong suốt
+            const cartGlass = new THREE.Mesh(new THREE.BoxGeometry(2.0, 1.3, 1.2), new THREE.MeshPhysicalMaterial({
+                color: 0xaaeeff, transparent: true, opacity: 0.2, transmission: 0.9, roughness: 0
+            }));
+            cartGlass.position.y = 0.95;
+            
+            // Màn hình điều khiển trong xe
+            const panel = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.6, 1.0), new THREE.MeshStandardMaterial({color: 0x222222}));
+            panel.position.set(-0.8, 0.6, 0);
+            const screen = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.5), new THREE.MeshBasicMaterial({color: 0x00ffcc}));
+            screen.rotation.y = Math.PI/2;
+            screen.position.set(-0.64, 0.6, 0);
+
+            // 4 Cột Ống Đẩy Hover
+            const thrusterMat = new THREE.MeshStandardMaterial({color: 0x444444, metalness: 1});
+            const thrustPoints = [[-0.8, -0.6], [0.8, -0.6], [-0.8, 0.6], [0.8, 0.6]];
+            thrustPoints.forEach(p => {
+                let t = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.25, 0.4), thrusterMat);
+                t.position.set(p[0], -0.1, p[1]);
+                let ring = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.05, 8, 16), new THREE.MeshBasicMaterial({color:0x00ffff}));
+                ring.position.set(p[0], -0.3, p[1]);
+                ring.rotation.x = Math.PI/2;
+                cartGroup.add(t, ring);
+            });
+
+            // Còi báo hụ trên nóc xe
+            const siren = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.15), new THREE.MeshBasicMaterial({color:0xff0000}));
+            siren.position.set(0, 1.7, 0);
+            cartGroup.add(siren);
+
+            // Đèn gầm xe
+            const underGlow = new THREE.PointLight(0x00ffff, 1.5, 4);
+            underGlow.position.set(0, -0.2, 0);
+            cartGroup.add(cartBase, cartCage, cartGlass, panel, screen, underGlow);
+            cartGroup.position.set(P_LEFT_X, 0.3, 0);
+            scene.add(cartGroup);
+
+            // Tạo Characters
+            for(let i=0; i<3; i++) {
+                let doc = createDoctor();
+                scene.add(doc);
+                characters.push(doc);
+                state.leftBank.push(doc);
+                
+                let pat = createPatient();
+                scene.add(pat);
+                characters.push(pat);
+                state.leftBank.push(pat);
+            }
+
+            updateVisuals(0);
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.maxPolarAngle = Math.PI / 2.2; 
+            controls.minPolarAngle = Math.PI / 6;
+            controls.minDistance = 8;
+            controls.maxDistance = 25;
+
+            window.addEventListener('resize', onResize);
+            window.addEventListener('pointerdown', onPointerDown);
+            window.addEventListener('pointermove', onPointerMove);
+
+            gsap.ticker.add(render);
+        }
+
+        // --- MAP DESIGN TỐI THƯỢNG ---
+        function buildMedicalMap() {
+            // Sàn Vùng Đỏ (Trái) với độ bóng cao (Reflective)
+            const floorMat = new THREE.MeshStandardMaterial({color: 0x151515, metalness: 0.8, roughness: 0.1});
+            const leftZone = new THREE.Mesh(new THREE.BoxGeometry(10, 0.2, 14), floorMat);
+            leftZone.position.set(-7, 0, 0);
+            leftZone.receiveShadow = true;
+            scene.add(leftZone);
+            
+            // Lưới Grid Sinh học trên Vùng Đỏ
+            const gridRed = new THREE.GridHelper(10, 10, 0xff0000, 0x440000);
+            gridRed.position.set(-7, 0.11, 0);
+            scene.add(gridRed);
+
+            // Bức tường Lab khép kín bao quanh map
+            const wallMat = new THREE.MeshStandardMaterial({color: 0x0d1a26, metalness: 0.3, roughness: 0.9});
+            const backWall = new THREE.Mesh(new THREE.BoxGeometry(30, 10, 1), wallMat);
+            backWall.position.set(0, 5, -8);
+            scene.add(backWall);
+
+            // Thêm Giường Bệnh Dã Chiến ở Vùng Đỏ dồn vào trong góc
+            const bedMatFrame = new THREE.MeshStandardMaterial({color: 0x888888, metalness: 0.8});
+            const bedMatMattress = new THREE.MeshStandardMaterial({color: 0x223322});
+            for(let i=0; i<3; i++) {
+                let bedGroup = new THREE.Group();
+                let table = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.5, 1.2), bedMatMattress); table.position.y = 0.5; table.castShadow=true;
+                let leg1 = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.5), bedMatFrame); leg1.position.set(-1.1, 0.25, -0.5);
+                let leg2 = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.5), bedMatFrame); leg2.position.set(1.1, 0.25, -0.5);
+                let leg3 = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.5), bedMatFrame); leg3.position.set(-1.1, 0.25, 0.5);
+                let leg4 = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.5), bedMatFrame); leg4.position.set(1.1, 0.25, 0.5);
+                // Trụ Truyền nước IV
+                let ivPole = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 2.5), bedMatFrame); ivPole.position.set(-1.1, 1.25, -0.5);
+                let ivBag = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.3, 0.15), new THREE.MeshBasicMaterial({color:0x00ffff, transparent:true, opacity:0.6})); ivBag.position.set(-0.9, 2.2, -0.5);
+                bedGroup.add(table, leg1, leg2, leg3, leg4, ivPole, ivBag);
+                bedGroup.position.set(-9, 0, -4 + i*3);
+                scene.add(bedGroup);
+            }
+
+            // Thùng phi rác y tế (Biohazard Barrels)
+            for(let i=0; i<3; i++){
+                let trash = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.8, 16), new THREE.MeshStandardMaterial({color: 0xddaa00, metalness:0.3}));
+                trash.position.set(-3.5, 0.4, -6 + i*1.5);
+                trash.castShadow = true;
+                scene.add(trash);
+            }
+
+            // Sàn Vùng Xanh (Phải) vơi độ bóng cực xịn
+            const rightFloorMat = new THREE.MeshStandardMaterial({color: 0xdddddd, metalness: 0.5, roughness: 0.1});
+            const rightZone = new THREE.Mesh(new THREE.BoxGeometry(10, 0.2, 14), rightFloorMat);
+            rightZone.position.set(7, 0, 0);
+            rightZone.receiveShadow = true;
+            scene.add(rightZone);
+
+            // Lưới Grid Vùng Xanh
+            const gridCyan = new THREE.GridHelper(10, 10, 0x00ffff, 0x004444);
+            gridCyan.position.set(7, 0.11, 0);
+            scene.add(gridCyan);
+            
+            // Thiết bị Khử Khuẩn Vùng Xanh (Máy Scanner Nguyên Khối Laser)
+            const scannerMat = new THREE.MeshStandardMaterial({color: 0x222222, metalness: 0.9});
+            const scannerL = new THREE.Mesh(new THREE.BoxGeometry(0.5, 3, 1), scannerMat); scannerL.position.set(3, 1.5, -2);
+            const scannerR = new THREE.Mesh(new THREE.BoxGeometry(0.5, 3, 1), scannerMat); scannerR.position.set(3, 1.5, 2);
+            const scannerT = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 5), scannerMat); scannerT.position.set(3, 3.25, 0);
+            
+            // Rèm Laser xanh lá chặn cửa
+            const laserGeo = new THREE.PlaneGeometry(0.1, 5);
+            const laserMat = new THREE.MeshBasicMaterial({color: 0x00ff00, transparent:true, opacity:0.3, side:THREE.DoubleSide});
+            const laserPlane = new THREE.Mesh(laserGeo, laserMat);
+            laserPlane.position.set(3, 1.5, 0);
+            laserPlane.rotation.x = Math.PI/2;
+            scene.add(scannerL, scannerR, scannerT, laserPlane);
+
+            // Bố trí Dải Hành lang hầm (Giữa)
+            const railMat = new THREE.MeshStandardMaterial({color: 0x050505, metalness: 0.8});
+            const railBase = new THREE.Mesh(new THREE.BoxGeometry(4, 0.1, 14), railMat);
+            railBase.position.set(0, 0.05, 0);
+            scene.add(railBase);
+
+            // Vạch cảnh báo trên đường ray (Hazard stripes) chớp sáng
+            const yellowStripMat = new THREE.MeshBasicMaterial({color: 0xffff00});
+            for(let i=-1.8; i<=1.8; i+=0.4) {
+                let strip = new THREE.Mesh(new THREE.PlaneGeometry(4, 0.1), yellowStripMat);
+                strip.rotation.x = -Math.PI/2;
+                strip.position.set(i, 0.11, 0);
+                scene.add(strip);
+            }
+
+            // Vòm Cổng Chui (Sci-Fi Tunnels)
+            const archMat = new THREE.MeshStandardMaterial({color: 0x111111, metalness: 0.9, roughness: 0.2});
+            for(let zOff = -5; zOff <= 5; zOff += 2.5) {
+                let pL = new THREE.Mesh(new THREE.BoxGeometry(0.2, 4, 0.2), archMat); pL.position.set(-2, 2, zOff);
+                let pR = new THREE.Mesh(new THREE.BoxGeometry(0.2, 4, 0.2), archMat); pR.position.set(2, 2, zOff);
+                let pT = new THREE.Mesh(new THREE.BoxGeometry(4.2, 0.2, 0.2), archMat); pT.position.set(0, 4.1, zOff);
+                
+                // Đèn trùm neon
+                let pNeon = new THREE.Mesh(new THREE.BoxGeometry(3.8, 0.05, 0.05), new THREE.MeshBasicMaterial({color: 0x00ffff})); 
+                pNeon.position.set(0, 4.0, zOff + 0.12);
+                
+                scene.add(pL, pR, pT, pNeon);
+            }
+
+            // Quạt trần khổng lồ Vùng Đỏ (Tương tác)
+            ceilingFan = new THREE.Group();
+            const fanCenter = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.2), new THREE.MeshStandardMaterial({color:0x555555}));
+            for(let i=0; i<3; i++) {
+                let blade = new THREE.Mesh(new THREE.BoxGeometry(3, 0.05, 0.4), new THREE.MeshStandardMaterial({color:0x222222}));
+                blade.position.x = 1.6;
+                let pivot = new THREE.Group();
+                pivot.rotation.y = i * (Math.PI*2/3);
+                pivot.add(blade);
+                ceilingFan.add(pivot);
+            }
+            ceilingFan.add(fanCenter);
+            ceilingFan.position.set(-7, 6.5, 0); 
+            // Cục đế bám trần
+            const fanPole = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 3), new THREE.MeshStandardMaterial({color:0x111111}));
+            fanPole.position.set(-7, 8, 0);
+            scene.add(ceilingFan, fanPole);
+            
+            // TRỤ ĐIỀU KHIỂN TRUNG TÂM (Thay cho mấy cục gạch)
+            const controlDesk = new THREE.Group();
+            const deskBase = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.2, 0.8), new THREE.MeshStandardMaterial({color: 0x333333, metalness: 0.8}));
+            deskBase.position.y = 0.6;
+            const deskTop = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.1, 0.9), new THREE.MeshStandardMaterial({color: 0x111111, metalness: 0.9}));
+            deskTop.position.y = 1.25;
+            deskTop.rotation.x = 0.1;
+            controlDesk.add(deskBase, deskTop);
+            
+            // 3 Nút Bấm vát chéo điều khiển hệ thống
+            const btnGeo = new THREE.CylinderGeometry(0.15, 0.15, 0.1, 16);
+            
+            const switchFan = new THREE.Mesh(btnGeo, new THREE.MeshStandardMaterial({color:0xffaa00, emissive:0x664400}));
+            switchFan.position.set(-0.5, 1.35, 0); switchFan.rotation.x = 0.1;
+
+            const switchLight = new THREE.Mesh(btnGeo, new THREE.MeshStandardMaterial({color:0x00ff00, emissive:0x006600}));
+            switchLight.position.set(0, 1.35, 0); switchLight.rotation.x = 0.1;
+
+            const switchAc = new THREE.Mesh(btnGeo, new THREE.MeshStandardMaterial({color:0x00aaff, emissive:0x004466}));
+            switchAc.position.set(0.5, 1.35, 0); switchAc.rotation.x = 0.1;
+
+            controlDesk.add(switchFan, switchLight, switchAc);
+            controlDesk.position.set(-11, 0, -2);
+            controlDesk.rotation.y = Math.PI/4;
+            scene.add(controlDesk);
+
+            // Đèn rọi phụ trợ gắn với công tắc riêng
+            ambientLightToggle = new THREE.PointLight(0xffffff, 1.0, 15);
+            ambientLightToggle.position.set(-8, 5, 3);
+            scene.add(ambientLightToggle);
+
+            // ĐIỀU HÒA NHIỆT ĐỘ (AC) Vùng Đỏ
+            const acUnit = new THREE.Mesh(new THREE.BoxGeometry(3, 1, 0.8), new THREE.MeshStandardMaterial({color: 0xeeeeee, metalness: 0.4}));
+            acUnit.position.set(-4, 4.5, -7.5);
+            acVentsMat = new THREE.MeshBasicMaterial({color: 0x000000}); // Tối khi tắt
+            const acVents = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.2, 0.9), acVentsMat);
+            acVents.position.set(-4, 4.1, -7.5);
+            scene.add(acUnit, acVents);
+            
+            // Bọc highlight tương tác
+            [switchFan, switchLight, switchAc].forEach(prop => {
+                let hl = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.2, 16), new THREE.MeshBasicMaterial({color: 0x00ffcc, wireframe: true, transparent:true, opacity:0}));
+                prop.userData.highlight = hl;
+                prop.add(hl);
+                interactableProps.push(prop);
+            });
+            switchFan.userData.isProp = true; switchFan.userData.type = 'fan';
+            switchLight.userData.isProp = true; switchLight.userData.type = 'light';
+            switchAc.userData.isProp = true; switchAc.userData.type = 'ac';
+
+            // TRANG TRÍ PHÒNG CÁCH LY (VÙNG XANH)
+            // Tủ thuốc kính Cyberpunk
+            const cabMat = new THREE.MeshStandardMaterial({color: 0xcccccc, metalness:0.9});
+            const cabGlass = new THREE.MeshPhysicalMaterial({color:0x00ffff, transparent:true, opacity:0.3, side: THREE.DoubleSide});
+            for(let i=0; i<2; i++) {
+                let cab = new THREE.Mesh(new THREE.BoxGeometry(1.5, 3.5, 0.8), cabMat);
+                let cg = new THREE.Mesh(new THREE.BoxGeometry(1.3, 3.3, 0.9), cabGlass);
+                cab.add(cg);
+                cab.position.set(11, 1.75, -4 + i*4);
+                cab.rotation.y = -Math.PI/4;
+                cab.castShadow = true;
+                scene.add(cab);
+            }
+
+            // Chậu cây sinh học phát sáng Vùng Xanh
+            for(let i=0; i<3; i++) {
+                let pot = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.3, 0.8), new THREE.MeshStandardMaterial({color:0x222222}));
+                pot.position.set(8 + i*1.2, 0.4, 5.5);
+                pot.castShadow = true;
+                // Cây cảnh dạng quả cầu gai phát sáng xanh
+                let plant = new THREE.Mesh(new THREE.SphereGeometry(0.6, 8, 8), new THREE.MeshBasicMaterial({color:0x00ff00, wireframe:true}));
+                plant.position.set(0, 0.8, 0);
+                pot.add(plant);
+                scene.add(pot);
+            }
+        }
+
+        // --- CHARACTER MODELING ---
+        function createDoctor() {
+            const group = new THREE.Group();
+            
+            // Hazmat Suit Body (Áo Blouse / Đồ bảo hộ)
+            const matBase = new THREE.MeshStandardMaterial({color: 0xffffff, metalness: 0.1, roughness: 0.8});
+            const body = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.28, 0.8, 16), matBase);
+            body.position.y = 0.4;
+            body.castShadow = true;
+            
+            // Đầu và Kính chắn
+            const head = new THREE.Mesh(new THREE.SphereGeometry(0.2, 16, 16), matBase);
+            head.position.y = 0.9;
+            head.castShadow = true;
+            const visor = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.15, 0.28), new THREE.MeshStandardMaterial({color: 0x222222, metalness: 1.0, roughness:0}));
+            visor.position.set(0, 0.9, 0.08);
+
+            // Ống nghe y tế (Stethoscope) quàng quanh cổ
+            const stethMat = new THREE.MeshStandardMaterial({color: 0x111111, roughness: 0.2});
+            // Vòng dây quàng quanh cổ áo
+            const stethNeck = new THREE.Mesh(new THREE.TorusGeometry(0.26, 0.02, 8, 16, Math.PI), stethMat);
+            stethNeck.rotation.x = Math.PI / 2;
+            stethNeck.position.y = 0.78;
+            // Dây cáp thả xuống ngực áo
+            const stethDrop = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.25), stethMat);
+            stethDrop.position.set(0.1, 0.65, 0.27);
+            stethDrop.rotation.z = -0.2;
+            // Mặt áp nghe (Mặt kim loại tròn)
+            const stethHead = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.02), new THREE.MeshStandardMaterial({color: 0xcccccc, metalness:0.8}));
+            stethHead.position.set(0.15, 0.52, 0.28);
+            stethHead.rotation.x = Math.PI / 2;
+
+            // Red Cross Dạ quang trên ngực phải
+            const crossMat = new THREE.MeshBasicMaterial({color: 0xff0000});
+            const crossH = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.04, 0.02), crossMat);
+            crossH.position.set(-0.1, 0.6, 0.28);
+            const crossV = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.15, 0.02), crossMat);
+            crossV.position.set(-0.1, 0.6, 0.28);
+
+            group.add(body, head, visor, stethNeck, stethDrop, stethHead, crossH, crossV);
+            group.userData = { isDoc: true, type: 'Bác Sĩ' };
+            
+            // Viền hover ảo
+            const highlight = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 1.2, 16), new THREE.MeshBasicMaterial({color: 0x00ffcc, wireframe: true, transparent:true, opacity:0}));
+            highlight.position.y = 0.6;
+            group.userData.highlight = highlight;
+            group.add(highlight);
+
+            return group;
+        }
+
+        function createPatient() {
+            const group = new THREE.Group();
+            // Đồ sọc xanh nhạt bệnh nhân
+            const matBase = new THREE.MeshStandardMaterial({color: 0x5DADE2, roughness: 1.0});
+            const body = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.7, 0.3), matBase);
+            body.position.y = 0.35;
+            body.rotation.x = 0.15; // Hơi khom người nhiều hơn do kiệt sức
+            body.castShadow = true;
+
+            // Đầu tái nhợt
+            const headMat = new THREE.MeshStandardMaterial({color: 0xe0e0e0});
+            const head = new THREE.Mesh(new THREE.SphereGeometry(0.18, 16, 16), headMat);
+            head.position.set(0, 0.75, 0.1); // Cúi đầu do gù
+            head.rotation.x = 0.2;
+            head.castShadow = true;
+
+            // Dây cảnh báo tay
+            const bandMat = new THREE.MeshBasicMaterial({color: 0xff8800});
+            const band = new THREE.Mesh(new THREE.TorusGeometry(0.25, 0.03, 8, 16), bandMat);
+            band.position.y = 0.3;
+            band.rotation.x = Math.PI/2;
+            
+            // Bình oxy đeo lưng (Xanh lá / Trắng)
+            const oxyMat = new THREE.MeshStandardMaterial({color: 0x27ae60, metalness: 0.3});
+            const oxyTank = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.45), oxyMat);
+            oxyTank.position.set(0, 0.4, -0.22);
+            oxyTank.rotation.x = 0.15; // Ép sát lưng
+            // Van bình oxy
+            const oxyValve = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.1), new THREE.MeshStandardMaterial({color: 0xaaaaaa}));
+            oxyValve.position.set(0, 0.65, -0.25);
+            // Ống thở dưỡng khí nối lên mặt
+            const tubeMat = new THREE.MeshBasicMaterial({color: 0xaaaaff, transparent:true, opacity:0.8});
+            const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.4), tubeMat);
+            tube.position.set(0.1, 0.7, -0.05);
+            tube.rotation.x = Math.PI/4;
+            tube.rotation.z = Math.PI/4;
+
+            group.add(body, head, band, oxyTank, oxyValve, tube);
+            group.userData = { isDoc: false, type: 'Bệnh Nhân' };
+
+            // Viền hover
+            const highlight = new THREE.Mesh(new THREE.BoxGeometry(0.6, 1.2, 0.6), new THREE.MeshBasicMaterial({color: 0x00ffcc, wireframe: true, transparent:true, opacity:0}));
+            highlight.position.y = 0.6;
+            group.userData.highlight = highlight;
+            group.add(highlight);
+
+            return group;
+        }
+
+        // --- DIALOGUES & HOVER ---
+
+        function showDialogue(char, forceText = null) {
+            const docWords = [
+                "Xin bình tĩnh!", "Mã định danh xác nhận.", "Bước lên xe!", "Duy trì báo động sơ tán.",
+                "Giữ khoảng cách an toàn!", "Không được chen lấn!", "Báo cáo: Tình hình không khả quan.",
+                "Chuẩn bị xịt khuẩn!", "Tất cả theo sát tôi!", "Nhiệt độ cơ thể bình thường. Lên xe!",
+                "Kiểm tra bình oxy liên tục!", "Khóa chặt cửa khoang điện tiệt trùng!", "Tuyệt đối không tháo kính chống độc!",
+                "Khu vực này sắp sập nguồn!", "Mã đỏ, xin nhắc lại, mã đỏ di tản!"
+            ];
+            const patWords = [
+                "Tôi đau quá...", "Khụ khụ, Cứu tôi với...", "Khó thở vật vã...",
+                "Bác sĩ ơi, sắp tới lượt tôi chưa?", "Mắt tôi trĩu nặng quá...", "Lạnh... buốt quá... cứu tôi...",
+                "Cho tôi xin một liều thuốc...", "Làm ơn, nhường tôi lên xe trước!", "Tôi không muốn bị bỏ lại!",
+                "Khụ khụ... máu...", "Mọi người chạy đi đâu hết vậy?", "Lồng ngực tôi đau ran lên...",
+                "Chóng mặt quá bác sĩ ơi...", "Bình oxy sát cạn rồi!"
+            ];
+            let text = forceText || (char.userData.isDoc ? docWords[Math.floor(Math.random()*docWords.length)] : patWords[Math.floor(Math.random()*patWords.length)]);
+            
+            // Text to speech phát âm thanh thật
+            if ('speechSynthesis' in window) {
+                let utterance = new SpeechSynthesisUtterance(text);
+                let viVoice = window.speechSynthesis.getVoices().find(v => v.lang.includes('vi'));
+                if (viVoice) utterance.voice = viVoice;
+                
+                if (char.userData.isDoc) {
+                    utterance.pitch = 0.8; // Giọng nam/trầm điềm tĩnh
+                    utterance.rate = 1.1;
+                } else {
+                    utterance.pitch = 1.4; // Giọng cao, yếu ớt hoặc hoảng loạn
+                    utterance.rate = 1.2;
+                }
+                window.speechSynthesis.speak(utterance);
+            }
+
+            let id = char.uuid;
+            let el = document.getElementById('bubble-' + id);
+            if(!el) {
+                el = document.createElement('div');
+                el.id = 'bubble-' + id;
+                el.className = 'speech-bubble';
+                document.getElementById('dialogues').appendChild(el);
+            }
+            el.innerText = text;
+            el.style.opacity = 1;
+            activeBubbles[id] = { char: char, el: el, time: Date.now() };
+        }
+
+        function updateBubbles() {
+            let now = Date.now();
+            for(let id in activeBubbles) {
+                let b = activeBubbles[id];
+                if(now - b.time > 2000) {
+                    b.el.style.opacity = 0;
+                    delete activeBubbles[id];
+                    continue;
+                }
+                const v = new THREE.Vector3();
+                b.char.getWorldPosition(v);
+                v.y += 1.3;
+                v.project(camera); 
+                let x = (v.x * .5 + .5) * window.innerWidth;
+                let y = (v.y * -.5 + .5) * window.innerHeight;
+                b.el.style.left = x + 'px';
+                b.el.style.top = y + 'px';
+            }
+        }
+
+        // --- TƯƠNG TÁC 1-CLICK LÊN/XUỐNG XE ---
+        function onPointerMove(e) {
+            if(state.isGameOver) return;
+            mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects([...characters, ...interactableProps], true);
+            
+            if(hoveredChar && hoveredChar.userData.highlight) hoveredChar.userData.highlight.material.opacity = 0;
+            
+            if (intersects.length > 0) {
+                let obj = intersects[0].object;
+                while(obj && obj.userData.isDoc === undefined && !obj.userData.isProp) obj = obj.parent;
+                if(obj && (obj.userData.isDoc !== undefined || obj.userData.isProp)) {
+                    hoveredChar = obj;
+                    hoveredChar.userData.highlight.material.opacity = 0.5;
+                    document.body.style.cursor = 'crosshair';
+                    return;
+                }
+            }
+            hoveredChar = null;
+            document.body.style.cursor = 'default';
+        }
+
+        function systemSpeak(text) {
+            if ('speechSynthesis' in window) {
+                let utterance = new SpeechSynthesisUtterance(text);
+                let viVoice = window.speechSynthesis.getVoices().find(v => v.lang.includes('vi'));
+                if (viVoice) utterance.voice = viVoice;
+                utterance.pitch = 1.0;
+                utterance.rate = 1.3;
+                window.speechSynthesis.speak(utterance);
+            }
+            // Hiển thị bóng thoại lơ lửng của hệ thống
+            let el = document.createElement('div');
+            el.className = 'speech-bubble';
+            el.style.position = 'fixed'; el.style.left = '50%'; el.style.top = '25%'; el.style.transform = 'translate(-50%, -50%)';
+            el.style.fontSize = '20px'; el.style.color = '#fff'; el.style.borderColor = '#00ffcc'; el.style.boxShadow = '0 0 20px #00ffcc';
+            el.innerText = "[MÁY CHỦ]: " + text;
+            document.body.appendChild(el);
+            setTimeout(() => { el.style.opacity = 1; }, 10);
+            setTimeout(() => { el.style.opacity = 0; setTimeout(()=>el.remove(),300); }, 4000);
+        }
+
+        function onPointerDown(e) {
+            if (hoveredChar && !state.isGameOver) {
+                if(hoveredChar.userData.isProp) {
+                    // Click vào Hệ thống Console
+                    if(hoveredChar.userData.type === 'fan') {
+                        isFanOn = !isFanOn;
+                        systemSpeak(isFanOn ? "Đã NHẤN QUẠT. Quạt trần hoạt động. Cẩn thận chém trúng đầu!" : "Đã TẮT QUẠT. Phóng xạ bay lơ lửng, cực kỳ nguy hiểm.");
+                    }
+                    if(hoveredChar.userData.type === 'light') {
+                        ambientLightToggle.intensity = ambientLightToggle.intensity > 0 ? 0 : 2.0;
+                        systemSpeak(ambientLightToggle.intensity === 0 ? "Đã TẮT ĐÈN. Bóng tối luôn che giấu một thứ tồi tệ." : "Trạm đã BẬT ĐÈN rọi phụ trợ. Chói mù lòa!");
+                    }
+                    if(hoveredChar.userData.type === 'ac') {
+                        isAcOn = !isAcOn;
+                        if(isAcOn) {
+                            acVentsMat.color.setHex(0x00ffff); // Đổi luồng khí lạnh Xanh
+                            systemSpeak("Đã BẬT ĐIỀU HÒA. Mát quá điii... Lạnh teo bugi rồi máy chủ ơi!");
+                        } else {
+                            acVentsMat.color.setHex(0x000000); // Tắt lỗ thông hơi
+                            systemSpeak("Đã TẮT ĐIỀU HÒA. Ở đây nóng hầm hập như cái lò thiêu vậy.");
+                        }
+                    }
+                } else if(!state.isAnimating) {
+                    handleCharacterClick(hoveredChar);
+                }
+            }
+        }
+
+        function handleCharacterClick(char) {
+            showDialogue(char);
+            let sideArray = state.cartSide === 'left' ? state.leftBank : state.rightBank;
+            
+            // Lên xe
+            if(sideArray.includes(char)) {
+                if(state.cart.length < 2) {
+                    sideArray.splice(sideArray.indexOf(char), 1);
+                    state.cart.push(char);
+                    animateJump(char, state.cartSide === 'left' ? P_LEFT_X : P_RIGHT_X, cartGroup.position.y + 0.1, 0, 0.3);
+                }
+            } 
+            // Xuống xe
+            else if(state.cart.includes(char)) {
+                state.cart.splice(state.cart.indexOf(char), 1);
+                sideArray.push(char);
+                updateVisuals(0.3);
+            }
+        }
+
+        function animateJump(char, tx, ty, tz, dur=0.5) {
+            gsap.to(char.position, {x: tx, y: ty, z: tz, duration: dur, ease: "power2.out", overwrite: true});
+            // Tạo cung nảy nhẹ khi di chuyển chân
+            const oldY = char.position.y;
+            gsap.to(char.position, {y: ty + 0.5, duration: dur/2, yoyo:true, repeat:1, ease: "sine.out"});
+        }
+
+        function updateVisuals(duration = 0.4) {
+            state.leftBank.forEach((char, i) => {
+                let s = leftBankSlots[i];
+                animateJump(char, s.x, s.y, s.z, duration);
+            });
+            state.rightBank.forEach((char, i) => {
+                let s = rightBankSlots[i];
+                animateJump(char, s.x, s.y, s.z, duration);
+            });
+            let cpx = state.cartSide === 'left' ? P_LEFT_X : P_RIGHT_X;
+            state.cart.forEach((char, i) => {
+                let o = cartSlotsOffsets[i];
+                animateJump(char, cpx + o.x, cartGroup.position.y + o.y, cartGroup.position.z + o.z, duration);
+            });
+        }
+
+        // --- BACKEND LOGIC ---
+        async function moveCart() {
+            if(state.cart.length === 0) {
+                alert("Cảnh báo: Xe đang rỗng. Cần chỉ định nhân sự điều hành!");
+                return;
+            }
+            if(state.isAnimating || state.isGameOver) return;
+
+            let docs = 0, pats = 0;
+            state.cart.forEach(c => c.userData.isDoc ? docs++ : pats++);
+
+            state.isAnimating = true;
+            document.getElementById('goBtn').disabled = true;
+
+            try {
+                const response = await fetch('/api/move', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ docs: docs, pats: pats })
+                });
+                const data = await response.json();
+
+                if (!data.success) {
+                    alert("⚠️ Lệnh bị từ chối: " + data.msg);
+                    state.isAnimating = false;
+                    document.getElementById('goBtn').disabled = false;
+                    return;
+                }
+
+                state.moves++;
+                document.getElementById('moves').innerText = "SỐ CHUYẾN XE: " + state.moves;
+
+                let targetX = state.cartSide === 'left' ? P_RIGHT_X : P_LEFT_X;
+                
+                // Xe chạy
+                gsap.to(cartGroup.position, {x: targetX, duration: 1.5, ease: "power1.inOut"});
+                state.cart.forEach((char, i) => {
+                    let tx = targetX + cartSlotsOffsets[i].x;
+                    gsap.to(char.position, {x: tx, duration: 1.5, ease: "power1.inOut", overwrite:true});
+                });
+
+                setTimeout(() => {
+                    state.cartSide = state.cartSide === 'left' ? 'right' : 'left';
+                    let targetBank = state.cartSide === 'left' ? state.leftBank : state.rightBank;
+                    targetBank.push(...state.cart);
+                    state.cart = []; 
+                    updateVisuals(0.4);
+                    
+                    setTimeout(() => {
+                        state.isAnimating = false;
+                        document.getElementById('goBtn').disabled = false;
+                        
+                        // Rule Check Effect
+                        if (data.state.game_over) {
+                            triggerMeltdown(data.state.msg);
+                        } else if (data.state.win) {
+                            state.isGameOver = true;
+                            showModal("DỊCH TỄ ĐƯỢC KIỂM SOÁT 🧬", data.state.msg + "\nTổng thao tác: " + state.moves, true);
+                        }
+                    }, 500);
+                }, 1600);
+
+            } catch(e) {
+                alert("Lỗi tín hiệu Server. Vui lòng bật terminal chạy: python server.py");
+                state.isAnimating = false;
+                document.getElementById('goBtn').disabled = false;
+            }
+        }
+
+        function triggerMeltdown(msgDesc) {
+            state.isGameOver = true;
+            // Cinematic First-person Drop Camera
+            gsap.to(camera.position, {y: 2, z: 8, duration: 1.5, ease: "power3.inOut"});
+            gsap.to(controls.target, {y: 0, duration: 1.5});
+            
+            // Red Alarm Pulse
+            document.getElementById('overlay-red').style.opacity = "0.4";
+            gsap.to(document.getElementById('overlay-red'), {opacity: 0.1, yoyo:true, repeat:20, duration:0.2});
+            
+            gsap.to(emergencyLight1, {intensity: 2, duration: 0.2, yoyo:true, repeat: 10});
+            gsap.to(emergencyLight2, {intensity: 2, duration: 0.2, yoyo:true, repeat: 10});
+
+            // Riot Animation (Bệnh nhân tấn công Bác sĩ)
+            let sideFailed = msgDesc.includes("Vùng Đỏ") ? state.leftBank : state.rightBank;
+            let docs = sideFailed.filter(c => c.userData.isDoc);
+            let pats = sideFailed.filter(c => !c.userData.isDoc);
+            
+            pats.forEach(p => {
+                if(docs.length === 0) return;
+                let target = docs[Math.floor(Math.random() * docs.length)];
+                showDialogue(p, "CHO CHÚNG TÔI THUỐC!!");
+                showDialogue(target, "MẬT MÃ ĐỎ! CỨU!!");
+                
+                // Bệnh nhân nhào tới
+                gsap.to(p.position, {
+                    x: target.position.x + (Math.random()-0.5)*0.5, 
+                    z: target.position.z + (Math.random()-0.5)*0.5, 
+                    duration: 0.4, ease: "power2.in"
+                });
+                setTimeout(() => {
+                    gsap.to(target.rotation, {x: Math.PI/2, duration: 0.2}); // Bác sĩ ngã quỵ
+                }, 400);
+            });
+
+            setTimeout(() => {
+                showModal("LOCKDOWN VĨNH VIỄN 🩸", msgDesc, false);
+            }, 2000);
+        }
+
+        function showModal(title, desc, isWin) {
+            const popup = document.getElementById('message');
+            document.getElementById('msgTitle').innerText = title;
+            document.getElementById('msgDesc').innerText = desc;
+            if(isWin) popup.className = 'win';
+            popup.style.display = 'block';
+        }
+
+        async function restartGame() {
+            try { await fetch('/api/reset', { method: 'POST' }); } catch(e) {}
+            location.reload();
+        }
+
+        function onResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function render() {
+            controls.update();
+            updateBubbles();
+            
+            // Animation rên rỉ nhẹ của bệnh nhân
+            let t = Date.now() * 0.005;
+            characters.forEach(c => {
+                if(!c.userData.isDoc && !state.isGameOver) {
+                    c.rotation.z = Math.sin(t + c.uuid.charCodeAt(0)) * 0.1; 
+                }
+            });
+
+            // Quay quạt trần
+            if(ceilingFan && isFanOn) {
+                ceilingFan.rotation.y += 0.05;
+            }
+
+            renderer.render(scene, camera);
+        }
+    </script>
+</body>
+</html>
